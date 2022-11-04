@@ -1,0 +1,46 @@
+[basic]
+cede	уступать
+side	сторона
+stroke	”дар
+fat	толстый
+let	позвол€ть
+but	но
+put	класть
+man	мужчина
+men	мужчины
+berry	€года
+cake	пирожное
+parcel	посылка
+painter	художник
+price	цена
+advice	совет
+hat	шл€па
+shirt	рубашка
+bright	светлый.€ркий
+cheap	дешевый
+dry	сухой
+warm	теплый
+wet	мокрыйш
+permission	разрешение
+[singplur]
+child	children	дети
+foot	feet	стопа
+man	men	мужчина
+mouse	mice	мышь
+person	people	человек
+a sheep	sheep	овца
+tooth	teeth	зуб
+woman	women	женщина
+berry	beries	€года
+dress	dresses	платье
+knife	knives	нож
+shelf	shelves	полка
+waiter	waiters	официант
+watch	watches	часы
+[more]
+This is a cat. It has a tail	Ёто кошка. ” неЄ есть хвост.
+
+[end]
+a pril
+n glag
+N such
