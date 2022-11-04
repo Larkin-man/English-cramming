@@ -7,13 +7,14 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//---------------------------------------------------------------------------
+//--------------------------------------------------------------------
 //#include <stdio.h> //для printf
 //#include <stdarg.h>
 //#include <Dialogs.hpp>
+#include <Classes.hpp>
 #pragma hdrstop
 #include "TableLoader.h"
-//-----------------------------------------------------------------------
+//--------------------------------------------------------------------
 __fastcall TableLoader::TableLoader()
 {
    MemStr  = NULL;
@@ -21,92 +22,102 @@ __fastcall TableLoader::TableLoader()
    MemChar = NULL;
    MemBool = NULL;
    StrCount = 0; IntCount = 0; CharCount = 0; BoolCount = 0;
-   Size = 0;
+   FRowCount = 0;
    IgnoreFirstString = true;
-   FFormat = NULL;
+   IgnoreDelimitersPack = true;
+	FFormat = NULL;
    //Vars = NULL;
    Delimiter = '\t';
    FSections = NULL;
    FSectionCount = 0;
    SectionCapacity = 0;
-   FColCount = 0;
+	FColCount = 0;
+	EndMark = "[end]";
 }
-//-----------------------------------------------------------------------
-//[секция] ... это список ссылок, также как в LoadFromFile. Возвращает кол-во строк в секции
-int TableLoader::GetSection(const AnsiString SectionName, ...)
+//--------------------------------------------------------------------
+int TableLoader::RealGetSection(int SectionIdx, va_list &args)
 {
-   if (FSectionCount == 0)      return -1;
-   int sSize = Size, sPos = 0;
-   if (SectionName != "" )
-   {
-      for (int i=0; i<FSectionCount; ++i)
-         if (SectionName == *FSections[i].Name)
-         {    
-            sSize = FSections[i].Size;
-            sPos = FSections[i].Pos;
-            break;
-         }
-   }
-   int **intArg;   char **charArg;  AnsiString **strArg;   bool **boolArg;
-   int CurrI=0, CurrC=0, CurrA=0, CurrB=0;
-   va_list ap;
-   va_start(ap, SectionName);
-   char t = FFormat[0];
-   for (int i=0; t!='\0'; t = FFormat[++i])
-   {
-      switch (t)
-      {
-         case 'i':
-            if ((intArg = va_arg(ap, int**)) != 0)
-               *intArg = MemInt[CurrI++] + sPos;
-         break;
-         case 'c':
-            if ((charArg = va_arg(ap, char**)) != 0)
-               *charArg = MemChar[CurrC++] + sPos;
-         break;
+	int sSize, sPos;
+	if (SectionIdx < 0)
+	{
+		sSize = FRowCount;
+		sPos = 0;
+	}
+	else
+	{
+		sSize = FSections[SectionIdx].Size;
+		sPos = FSections[SectionIdx].Pos;
+	}
+	int intCount=0, strCount=0, charCount=0, boolCount=0;
+	int **intArg;  String **strArg;  Char **CharArg;  bool **boolArg;
+	for (unsigned int i=0; i<strlen(FFormat); ++i)
+		switch (FFormat[i])
+		{
+			case 'i':
+			case 'I':
+				if ((intArg = va_arg(args, int**)) != 0)
+					*intArg = MemInt[intCount++] + sPos;
+				break;
          case 's':
-            if ((strArg = va_arg(ap, AnsiString**)) != 0)
-               *strArg = MemStr[CurrA++] + sPos;
-         break;
-         case 'b':
-            if ((boolArg = va_arg(ap, bool**)) != 0)
-               *boolArg = MemBool[CurrB++] + sPos;
-         break;
-         //default:    va_arg(ap, char);
-      }
-      //(1)
-   }
-    //throw EDBEditError("fefe");
-   va_end(ap);
-   return sSize;
+			case 'S':
+				if ((strArg = va_arg(args, String**)) != 0)
+					*strArg = MemStr[strCount++] + sPos;
+				break;
+			case 'c':
+			case 'C':
+				if ((CharArg = va_arg(args, Char**)) != 0)
+					*CharArg = MemChar[charCount++] + sPos;
+				break;
+			case 'b':
+			case 'B':
+				if ((boolArg = va_arg(args, bool**)) != 0)
+					*boolArg = MemBool[boolCount++] + sPos;
+				break;
+			//default: '0'
+		}
+	va_end(args);
+	return sSize;
 }
-//-----------------------------------------------------------------------
-int TableLoader::RegColumn(int* &Field, int ColNum, const AnsiString SectionName)
+//--------------------------------------------------------------------
+//[секция], ... это список ссылок, также как в LoadFromFile. Возвращает кол-во строк в секции
+int TableLoader::GetSection(const String SectionName, ...)
+{
+	if (FFormat == NULL)		return 0;
+   va_list ap;
+	va_start(ap, SectionName);
+	if (SectionName.IsEmpty() == false)
+      for (int i=0; i<FSectionCount; ++i)
+			if (SectionName == *FSections[i].Name)
+				return RealGetSection(i, ap);
+	return RealGetSection(-1, ap);
+}
+//--------------------------------------------------------------------
+int TableLoader::RegColumn(int* &Field, int ColNum, const String SectionName) const
 {
    --ColNum;
-   if (ColNum < 0)      return -1;
-   if (ColNum >= IntCount)      return -1;
-   if (SectionName != "")
+	if ((ColNum < 0)||(ColNum >= IntCount))
+		return -1;
+	if (SectionName.IsEmpty() == false)
    {
       for (int i=0; i<FSectionCount; ++i)
          if (SectionName == *FSections[i].Name)
          {
             Field = MemInt[ColNum] + FSections[i].Pos;
-            return FSections[i].Size;
+				return FSections[i].Size;
          }
       return 0;
    }
    else
-      Field = MemInt[ColNum];
-   return Size;
+		Field = MemInt[ColNum];
+	return FRowCount;
 }
-//-----------------------------------------------------------------------
-int TableLoader::RegColumn(char* &Field, int ColNum, const AnsiString SectionName)
+//--------------------------------------------------------------------
+int TableLoader::RegColumn(Char* &Field, int ColNum, const String SectionName) const
 {
-   --ColNum;
-   if (ColNum < 0)      return -1;
-   if (ColNum >= CharCount)      return -1;
-   if (SectionName != "")
+	--ColNum;
+	if (ColNum < 0)      return -1;
+	if (ColNum >= CharCount)      return -1;
+	if (SectionName.IsEmpty() == false)
    {
       for (int i=0; i<FSectionCount; ++i)
          if (SectionName == *FSections[i].Name)
@@ -117,16 +128,16 @@ int TableLoader::RegColumn(char* &Field, int ColNum, const AnsiString SectionNam
       return 0;
    }
    else
-      Field = MemChar[ColNum];
-   return Size;
+		Field = MemChar[ColNum];
+	return FRowCount;
 }
-//-----------------------------------------------------------------------
-int TableLoader::RegColumn(AnsiString* &Field, int ColNum, const AnsiString SectionName)
+//--------------------------------------------------------------------
+int TableLoader::RegColumn(String* &Field, int ColNum, const String SectionName) const
 {
    --ColNum;
-   if (ColNum < 0)      return -1;
-   if (ColNum >= StrCount)      return -1;
-   if (SectionName != "")
+	if (ColNum < 0)      return -1;
+	if (ColNum >= StrCount)      return -1;
+	if (SectionName.IsEmpty() == false)
    {
       for (int i=0; i<FSectionCount; ++i)
          if (SectionName == *FSections[i].Name)
@@ -137,16 +148,16 @@ int TableLoader::RegColumn(AnsiString* &Field, int ColNum, const AnsiString Sect
       return 0;
    }
    else
-      Field = MemStr[ColNum];
-   return Size;
+		Field = MemStr[ColNum];
+	return FRowCount;
 }
-//-----------------------------------------------------------------------
-int TableLoader::RegColumn(bool* &Field, int ColNum, const AnsiString SectionName)
+//--------------------------------------------------------------------
+int TableLoader::RegColumn(bool* &Field, int ColNum, const String SectionName) const
 {
    --ColNum;
-   if (ColNum < 0)      return -1;
+	if (ColNum < 0)      return -1;
    if (ColNum >= BoolCount)      return -1;
-   if (SectionName != "")
+   if (SectionName.IsEmpty() == false)
    {
       for (int i=0; i<FSectionCount; ++i)
          if (SectionName == *FSections[i].Name)
@@ -157,123 +168,122 @@ int TableLoader::RegColumn(bool* &Field, int ColNum, const AnsiString SectionNam
       return 0;
    }
    else
-      Field = MemBool[ColNum];
-   return Size;
+		Field = MemBool[ColNum];
+	return FRowCount;
 }
-//-----------------------------------------------------------------------
-//Загрузка из файла, format: i-int c-char s-Ansi b-bool, ... список ссылок на переменные
-int TableLoader::LoadFromFile(AnsiString Filename, const char *format, ...)
+//--------------------------------------------------------------------
+void TableLoader::Load(TStringList *list, const char *format)
 {
-   TStringList *file = new TStringList;
-   try { file->LoadFromFile(Filename);     }
-   catch (...)
-   {
-      delete file;
-      throw EFOpenError("Cannot open "+Filename);
-   }
-   if (file->Count <= 1)
-   {
-      delete file;
-      return 0;
-   }
-   if (Size > 0)
-   {//тут должно быть удаление
-      //~TableLoader();
-      Clear();
-   }
-   //Нужно пробежаться по файлу и удалить лишние строки
-   if (IgnoreFirstString)
-      file->Delete(0); //Первая лишняя
-   Size = file->Count;
-   String str;
-   for (int i=0; i<file->Count; i++)
-   {
-      str = file->Strings[i];
-      if (str == "[end]")
-      {
-         Size = i;
-         break;
-      }
-      if ((!str.IsEmpty())&&(str[1] == '['))
-         if (str.Pos(']') > 0)
-         {
-            SectionEnsureCapacity(FSectionCount+1);
-            //AnsiString g = str.SubString(2, str.Pos(']')-2);
-            FSections[FSectionCount].Pos = i;
-            //strcpy(FSections[SectionCount].Name, g.c_str());
-            FSections[FSectionCount].Name = new AnsiString(str.SubString(2, str.Pos(']')-2));
-            FSectionCount++;
-            str = "";    
-         }
+	if (IgnoreFirstString)
+		if (list->Count <= 1)
+			return;
+		else
+			list->Delete(0); //Первая лишняя
+	else
+		if (list->Count < 1)
+			return; //delete list;
+	if (FRowCount > 0)
+		Clear();
+	//Нужно пробежаться по файлу и удалить лишние строки и посчитать FRowCount
+	FRowCount = -1;
+	String str; //String *pStr;
+	bool EndIsPossible = !EndMark.IsEmpty();
+	for (int i=0; i<list->Count; i++)
+	{
+		str = list->Strings[i]; //str = &(list->Strings[i]); //не пашет
       if (str.IsEmpty())  //Пустую строку удалить, будто её нет
       {  //ShowMessage("Удаляем пустую строку №"+IntToStr(i));
-         file->Delete(i);
-         Size--;
-         i--;
-         continue;  //Это если пустые строки в конце документа
-      }
-   }
-   if (FSectionCount > 0)
+			list->Delete(i);
+			//FRowCount--;
+			i--;
+			continue;  //Это если пустые строки в конце документа
+		}
+		if (EndIsPossible&&(str.Pos(EndMark) > 0))
+      {
+			FRowCount = i;
+			break;
+		}
+		if ( (!str.IsEmpty())&&(str[1] == '[')&&(str.Pos(']') > 0) )
+		{
+			SectionEnsureCapacity(FSectionCount+1);
+			FSections[FSectionCount].Pos = i;
+			//strcpy(FSections[SectionCount].Name, g.c_str());
+			FSections[FSectionCount].Name = new String(str.SubString(2, str.Pos(']')-2));
+			FSectionCount++;
+			list->Delete(i); //str = "";
+			i--;
+			continue;  //Это если пустые строки в конце документа
+		}
+	}
+	if (FRowCount < 0)
+		FRowCount = list->Count;
+	if (FRowCount == 0)
+		return;
+	//Установить размер секций
+	if (FSectionCount > 0)
    {
-      for (int i=0; i<FSectionCount-1; ++i)
-         FSections[i].Size = FSections[i+1].Pos - FSections[i].Pos;
-      FSections[FSectionCount-1].Size = Size - FSections[FSectionCount-1].Pos;
-   }
-   //for (int i=0; i<Size; ++i)
-   //   printf("%s\n",file->Strings[i]);
-   //----vars-------------
-   int maxints=0, maxchars=0, maxstrings=0, maxbools=0 ;
+		for (int i=0; i<FSectionCount-1; ++i)
+			FSections[i].Size = FSections[i+1].Pos - FSections[i].Pos;
+      FSections[FSectionCount-1].Size = FRowCount - FSections[FSectionCount-1].Pos;
+	}
+   StrCount=0; IntCount=0; CharCount=0; BoolCount=0;
    //Разбор строки формата
-   FFormat = strdup(format);
-   for (unsigned int i=0; i<strlen(format); ++i)
-      switch (format[i])
-      {
-         case 'i': maxints++; break;
-         case 'c': maxchars++; break;
-         case 's': maxstrings++; break;
-         case 'b': maxbools++; break;
+	FFormat = strdup(format);
+	for (unsigned int i=0; i<strlen(FFormat); ++i)
+		switch (FFormat[i])
+		{
+			case 'I':
+			case 'i': IntCount++; break;
+			case 'C':
+			case 'c': CharCount++; break;
+			case 'S':
+			case 's': StrCount++; break;
+			case 'B':
+			case 'b': BoolCount++; break;
          default: FFormat[i] = '0';
-      }
-   FColCount += maxints; FColCount += maxchars; FColCount += maxstrings; FColCount += maxbools;
-   //----------------------
-   //Создание массивов по кооличеству строк в файле
-   if (maxints > 0)
+		}
+	FColCount = 0;
+	FColCount += IntCount; FColCount += CharCount; FColCount += StrCount; FColCount += BoolCount;
+	if (FColCount == 0)
+   	return;
+	//----------------------
+	//Создание массивов по кооличеству строк в файле
+	if (IntCount > 0)
    {
-      MemInt = new int*[maxints];
-      for (int i=0; i<maxints; ++i)
-         MemInt[i] = new int[Size];
+		MemInt = new int*[IntCount];
+		for (int i=0; i<IntCount; ++i)
+			MemInt[i] = new int[FRowCount];
    }
-   if (maxchars > 0)
+	if (CharCount > 0)
    {
-      MemChar = new char*[maxchars];
-      for (int i=0; i<maxchars; ++i)
-         MemChar[i] = new char[Size];
+		MemChar = new Char*[CharCount];
+		for (int i=0; i<CharCount; ++i)
+         MemChar[i] = new Char[FRowCount];
    }
-   if (maxstrings > 0)
+	if (StrCount > 0)
    {
-      MemStr = new AnsiString* [maxstrings];
-      for (int i=0; i<maxstrings; ++i)
-         MemStr[i] = new AnsiString[Size];
+		MemStr = new String* [StrCount];
+		for (int i=0; i<StrCount; ++i)
+         MemStr[i] = new String[FRowCount];
    }
-   if (maxbools > 0)
+	if (BoolCount > 0)
    {
-      MemBool = new bool* [maxbools];
-      for (int i=0; i<maxbools; ++i)
-         MemBool[i] = new bool[Size];
-   }
-   //-----------------------------------------------
-   //Началось считывание файл и разбор по словам
-   //char del='\t';    //Это разделитель ' '  '\t'
+		MemBool = new bool* [BoolCount];
+		for (int i=0; i<BoolCount; ++i)
+         MemBool[i] = new bool[FRowCount];
+	}
+	//-----------------------------------------------
+	//Началось считывание файл и разбор по словам
    int p;   //Индекс разделителя
-   String word;   //Это отдельные слова
-   int curr, currstr, currint, currchar, currbool;
-   for (int i=0; i<Size; ++i)
-   {
-      curr=0; currstr=0; currint=0; currchar=0; currbool=0;
-      str = file->Strings[i];
-      while (str.Length() != 0)  //Вот цикл отделяющий слова
+	String word;   //Это отдельные слова
+	int curr, currStr, currInt, currChar, currBool;
+   for (int i=0; i<FRowCount; ++i)
+	{
+      curr=0; currStr=0; currInt=0; currChar=0; currBool=0;
+      str = list->Strings[i];
+		while (str.IsEmpty() == false)  //Вот цикл отделяющий слова
       {
-         if (str[1] == Delimiter) //Для отсеивания лишних разделителей
+         if ( (IgnoreDelimitersPack)&&(str[1] == Delimiter) ) //Для отсеивания лишних разделителей
          {
             str.Delete(1,1);
             continue;
@@ -289,86 +299,110 @@ int TableLoader::LoadFromFile(AnsiString Filename, const char *format, ...)
             word = str.SubString(1,p-1);
             str.Delete(1,p);
          }
-         //Слово получено
-         ///printf("%s ",word);
-         try
-         {
+			//Слово получено
+			try
+			{
+				REPEAT:
             switch (format[curr])
-            {
-               case 'i' :  MemInt [currint][i] = StrToInt(word);
-                           /*printf("d=%d ",MemInt[currint][i]);*/
-                           currint++;
+				{
+					case 'I': 	currInt++;
+									curr++;
+									goto REPEAT;
+					case 'C': 	currChar++;
+									curr++;
+									goto REPEAT;
+					case 'S': 	currStr++;
+									curr++;
+									goto REPEAT;
+					case 'B': 	currBool++;
+									curr++;
+									goto REPEAT;
+					case 'i' :  MemInt [currInt][i] = word.ToIntDef(0);
+									currInt++;
                            break;
-               case 'c' :  MemChar[currchar][i]= word.operator [](1);
-                           /*printf("c=%c ", MemChar[currchar][i]);*/
-                           currchar++;
-                           break;
-               case 's' :  MemStr [currstr][i] = word;
-                           /*printf("s=%s ",MemStr[currstr][i]);*/
-                           currstr++;
-                           break;
-               case 'b' :  MemBool[currbool][i]= (word.operator [](1)) == '0' ? false : true;
-                           /*printf("b=%d ",MemBool[currbool][i]);*/
-                           currbool++;
-                           break;
-               //default :
-            }
-         } catch (EConvertError&)
+					case 'c' :  MemChar[currChar][i] = word[1];
+                           currChar++;
+									break;
+					case 's' :  MemStr [currStr][i] = word;
+									currStr++;
+									break;
+					case 'b' :  MemBool[currBool][i] = word[1] == '0' ? false : true;
+									currBool++;
+									break;
+					//default :
+				}
+			}
+			catch (...)
          {
-            switch (format[curr])
-            {
-               case 'i' :  MemInt [currint][i] = 0; /*printf("d=%d ",MemInt[currint][i]);*/ currint++;  break;
-               case 'c' :  MemChar[currchar][i]= '0'; /*printf("c=%c ", MemChar[currchar][i]);*/ currchar++; break;
-               case 's' :  MemStr [currstr][i] = ""; /*printf("s=%s ",MemStr[currstr][i]);*/ currstr++; break;
-               case 'b' :  MemBool[currbool][i]= false; /*printf("b=%d ",MemBool[currbool][i]);*/ currbool++; break;
-               //default :
-            }
-         }
+				switch (format[curr])
+				{
+					case 'i' :  MemInt [currInt][i] = 0;  currInt++;  break;
+					case 'c' :  MemChar[currChar][i]= '0';  currChar++; break;
+					case 's' :  MemStr [currStr][i] = "";  currStr++; break;
+					case 'b' :  MemBool[currBool][i]= false;  currBool++; break;
+					//default :
+				}
+			}
          curr++;
       }
-   }
-   delete file;
-   /*
-   for (int i=0;i<maxchars;i++)
-    maschar[i][nCount]='\0';
-   return nCount;
-   }   */
-   int **intArg;
-   char **charArg;
-   AnsiString **strArg;
-   bool **boolArg;
-   va_list ap;
-   va_start(ap, format);
-   char t = format[0];
-   for (int i=0; t!='\0'; t = format[++i])
-   {
-      switch (t)
-      {
-         case 'i':
-            if ((intArg = va_arg(ap, int**)) != 0)
-               *intArg = MemInt[IntCount++];
-         break;
-         case 'c':
-            if ((charArg = va_arg(ap, char**)) != 0)
-               *charArg = MemChar[CharCount++];
-         break;
-         case 's':
-            if ((strArg = va_arg(ap, AnsiString**)) != 0)
-               *strArg = MemStr[StrCount++];
-         break;
-         case 'b':
-            if ((boolArg = va_arg(ap, bool**)) != 0)
-               *boolArg = MemBool[BoolCount++];
-         break;
-         //default:    va_arg(ap, char);
-      }
-      //(1)
-   }
-    //throw EDBEditError("fefe");
-   va_end(ap);
-   return Size;       /////////*/
+	}
 }
-//-----------------------------------------------------------------------
+//--------------------------------------------------------------------
+//Загрузка из файла, format: i-int c-Char s-Ansi b-bool, ... список ссылок на переменные
+int TableLoader::LoadFromFile(String Filename, const char *format, ...)
+{
+	TStringList *file = NULL;
+	try
+	{
+		file = new TStringList;
+		file->LoadFromFile(Filename);
+		Load(file, format);
+		va_list ap;
+		va_start(ap, format);
+		RealGetSection(-1, ap); //va_end(ap);
+	}
+	__finally
+	{
+		delete file;
+	}
+	return FRowCount;
+}
+//--------------------------------------------------------------------
+int TableLoader::LoadFromResource(String ResourceName, const char *format, ...)
+{
+	TStringList *file = NULL;
+	TResourceStream *ptRes = NULL;
+	try
+	{
+		file = new TStringList;
+		ptRes = new TResourceStream(0, ResourceName, L"RT_RCDATA"); //#define _D(__s) L ## __s
+		file->LoadFromStream(ptRes);
+		Load(file, format);
+		va_list ap;
+		va_start(ap, format);
+		RealGetSection(-1, ap);	//va_end(ap);
+	}
+	__finally
+	{
+		delete file;
+		delete ptRes;
+	}
+	return FRowCount;
+}
+//--------------------------------------------------------------------
+int TableLoader::LoadFromList(TStrings *list, const char *format, ...)
+{
+	if (list)
+	{
+		Load((TStringList*)list, format);
+		va_list ap;
+		va_start(ap, format);
+		RealGetSection(-1, ap);		//va_end(ap);
+	}
+	return FRowCount;
+}
+
+//--------------------------------------------------------------------
 void TableLoader::SectionEnsureCapacity(int count)
 {
    if (count > SectionCapacity)
@@ -377,18 +411,18 @@ void TableLoader::SectionEnsureCapacity(int count)
       while ( SectionCapacity < count )
          SectionCapacity *= 2;
       if (FSections)
-         FSections = (Section*) realloc (FSections, SectionCapacity*sizeof(Section));
+			FSections = (TLSection*) realloc (FSections, SectionCapacity*sizeof(TLSection));
       else
-         FSections = (Section*) malloc (SectionCapacity*sizeof(Section));
+         FSections = (TLSection*) malloc (SectionCapacity*sizeof(TLSection));
    }
 }
-//-----------------------------------------------------------------------
+//--------------------------------------------------------------------
 void __fastcall TableLoader::Clear()
 {
    if (FFormat)
    {
-      free (FFormat);
-      FFormat = NULL;
+		free (FFormat);
+		FFormat = NULL;
    }
    if (FSections)
    {
@@ -429,12 +463,28 @@ void __fastcall TableLoader::Clear()
          delete []MemStr[i];
       delete []MemStr;
       MemStr = NULL;
-      StrCount = 0;
+		StrCount = 0;
    }
-   Size = 0;
-   FColCount = 0;
+   FRowCount = 0;
+	FColCount = 0;
 }
-//-----------------------------------------------------------------------
+//--------------------------------------------------------------------
+TLSection* TableLoader::FindSection(String SectionName)
+{
+   for (int i=0; i<FSectionCount; ++i)
+      if (SectionName == *FSections[i].Name)
+         return &FSections[i];
+   return NULL;
+}
+//--------------------------------------------------------------------
+void TableLoader::GetCount(int &intCount, int &charCount, int &boolCount, int &strCount) const
+{
+	strCount = StrCount;
+	intCount = IntCount;
+	charCount = CharCount;
+	boolCount = BoolCount;
+}
+//--------------------------------------------------------------------
 __fastcall TableLoader::~TableLoader()
 {
    Clear();
